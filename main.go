@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -82,7 +84,12 @@ type apiConfig struct {
 }
 
 func (cfg *apiConfig) handlerHits(w http.ResponseWriter, r *http.Request) {
-	resp := fmt.Sprintf("Hits: %d", cfg.fileserverHits.Load())
+	resp := fmt.Sprintf(`<html>
+            <body>
+                <h1>Welcome, Chirpy Admin</h1>
+                <p>Chirpy has been visited %d times!</p>
+            </body>
+        </html>`, cfg.fileserverHits.Load())
 	w.Write([]byte(resp))
 }
 
@@ -96,6 +103,70 @@ func (cfg *apiConfig) middlewareMetrics(next http.Handler) http.Handler {
 		cfg.fileserverHits.Add(1)
 		next.ServeHTTP(w, r)
 	})
+}
+
+func handlerValidate(w http.ResponseWriter, r *http.Request) {
+	type parameters struct {
+		Body string `json:"body"`
+	}
+	type errorBody struct {
+		Err string `json:"error"`
+	}
+	type valid struct {
+		Valid bool `json:"valid"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	params := parameters{}
+	err := decoder.Decode(&params)
+	if err != nil {
+		log.Printf("Error decoding parameters: %s", err)
+		w.WriteHeader(500)
+		errBody := errorBody{
+			Err: "Something went wrong",
+		}
+		eBody, err := json.Marshal(errBody)
+		if err != nil {
+			log.Printf("Error marshalling JSON: %s", err)
+			return
+		}
+		w.Write(eBody)
+	}
+
+	if len(params.Body) > 140 {
+		w.WriteHeader(400)
+		errBody := errorBody{
+			Err: "Chirp is too long",
+		}
+		eBody, err := json.Marshal(errBody)
+		if err != nil {
+			log.Printf("Error marshalling JSON: %s", err)
+			return
+		}
+		w.Write(eBody)
+	} else if len(params.Body) == 0 {
+		w.WriteHeader(400)
+		errBody := errorBody{
+			Err: "Request JSON should be in shape {'body': 'chirp message...'}",
+		}
+		eBody, err := json.Marshal(errBody)
+		if err != nil {
+			log.Printf("Error marshalling JSON: %s", err)
+			return
+		}
+		w.Write(eBody)
+	} else {
+		w.WriteHeader(200)
+		validBody := valid{
+			Valid: true,
+		}
+		vBody, err := json.Marshal(validBody)
+		if err != nil {
+			log.Printf("Error marshalling JSON: %s", err)
+			return
+		}
+		w.Write(vBody)
+	}
 }
 
 func main() {
@@ -118,9 +189,10 @@ func main() {
 	server := NewServer(cfg, *logger)
 	server.router.Handle("GET /app/", apiCfg.middlewareMetrics(http.StripPrefix("/app", http.FileServer(http.Dir(".")))))
 	server.router.Handle("GET /assets", http.FileServer(http.Dir("./assets")))
-	server.router.Handle("GET /healthz", http.HandlerFunc(handlerHealth))
-	server.router.Handle("GET /metrics", http.HandlerFunc(apiCfg.handlerHits))
-	server.router.Handle("GET /reset", http.HandlerFunc(apiCfg.handlerReset))
+	server.router.Handle("GET /api/healthz", http.HandlerFunc(handlerHealth))
+	server.router.Handle("POST /api/validate-chirp", http.HandlerFunc(handlerValidate))
+	server.router.Handle("POST /admin/reset", http.HandlerFunc(apiCfg.handlerReset))
+	server.router.Handle("GET /admin/metrics", http.HandlerFunc(apiCfg.handlerHits))
 
 	if err := server.Start(); err != nil {
 		logger.Fatal("starting server")
