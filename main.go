@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"regexp"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -112,9 +114,6 @@ func handlerValidate(w http.ResponseWriter, r *http.Request) {
 	type errorBody struct {
 		Err string `json:"error"`
 	}
-	type valid struct {
-		Valid bool `json:"valid"`
-	}
 
 	decoder := json.NewDecoder(r.Body)
 	params := parameters{}
@@ -156,16 +155,22 @@ func handlerValidate(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Write(eBody)
 	} else {
+		profaneWords := []string{"kerfuffle", "sharbert", "fornax"}
+		cleanedBody := strings.ToLower(params.Body)
+
+		for _, word := range profaneWords {
+			pattern := regexp.MustCompile(`(?i)\b` + word + `\b`)
+			cleanedBody = pattern.ReplaceAllString(cleanedBody, "****")
+		}
+
+		response := struct {
+			CleanedBody string `json:"cleaned_body"`
+		}{
+			CleanedBody: cleanedBody,
+		}
+
 		w.WriteHeader(200)
-		validBody := valid{
-			Valid: true,
-		}
-		vBody, err := json.Marshal(validBody)
-		if err != nil {
-			log.Printf("Error marshalling JSON: %s", err)
-			return
-		}
-		w.Write(vBody)
+		json.NewEncoder(w).Encode(response)
 	}
 }
 
