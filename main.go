@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
+	"sync/atomic"
 	"time"
 
 	"go.uber.org/zap"
@@ -75,6 +77,27 @@ func handlerHealth(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("OK"))
 }
 
+type apiConfig struct {
+	fileserverHits atomic.Int32
+}
+
+func (cfg *apiConfig) handlerHits(w http.ResponseWriter, r *http.Request) {
+	resp := fmt.Sprintf("Hits: %d", cfg.fileserverHits.Load())
+	w.Write([]byte(resp))
+}
+
+func (cfg *apiConfig) handlerReset(w http.ResponseWriter, r *http.Request) {
+	cfg.fileserverHits.Swap(0)
+	w.Write([]byte("OK"))
+}
+
+func (cfg *apiConfig) middlewareMetrics(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cfg.fileserverHits.Add(1)
+		next.ServeHTTP(w, r)
+	})
+}
+
 func main() {
 	cfg := Config{
 		ListenAddr:     ":8080",
@@ -83,6 +106,9 @@ func main() {
 		IdleTimeout:    30 * time.Second,
 		MaxHeaderBytes: 1 << 20, // 1mb
 	}
+	apiCfg := apiConfig{
+		fileserverHits: atomic.Int32{},
+	}
 
 	logger, err := initLogger()
 	if err != nil {
@@ -90,9 +116,11 @@ func main() {
 	}
 
 	server := NewServer(cfg, *logger)
-	server.router.Handle("GET /app/", http.StripPrefix("/app", http.FileServer(http.Dir("."))))
+	server.router.Handle("GET /app/", apiCfg.middlewareMetrics(http.StripPrefix("/app", http.FileServer(http.Dir(".")))))
 	server.router.Handle("GET /assets", http.FileServer(http.Dir("./assets")))
 	server.router.Handle("GET /healthz", http.HandlerFunc(handlerHealth))
+	server.router.Handle("GET /metrics", http.HandlerFunc(apiCfg.handlerHits))
+	server.router.Handle("GET /reset", http.HandlerFunc(apiCfg.handlerReset))
 
 	if err := server.Start(); err != nil {
 		logger.Fatal("starting server")
