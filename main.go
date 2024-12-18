@@ -1,7 +1,9 @@
 package main
 
 import (
+	"chirpy/internal/database"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -13,6 +15,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/joho/godotenv"
+	_ "github.com/lib/pq"
 	"go.uber.org/zap"
 )
 
@@ -83,6 +87,8 @@ func handlerHealth(w http.ResponseWriter, r *http.Request) {
 
 type apiConfig struct {
 	fileserverHits atomic.Int32
+	dbQueries      *database.Queries
+	platform       string
 }
 
 func (cfg *apiConfig) handlerHits(w http.ResponseWriter, r *http.Request) {
@@ -96,6 +102,11 @@ func (cfg *apiConfig) handlerHits(w http.ResponseWriter, r *http.Request) {
 }
 
 func (cfg *apiConfig) handlerReset(w http.ResponseWriter, r *http.Request) {
+	if cfg.platform != "dev" {
+		w.WriteHeader(403)
+		return
+	}
+	cfg.dbQueries.DeleteAllUsers(r.Context())
 	cfg.fileserverHits.Swap(0)
 	w.Write([]byte("OK"))
 }
@@ -174,7 +185,72 @@ func handlerValidate(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, r *http.Request) {
+	type parameters struct {
+		Email string `json:"email"`
+	}
+	type errorBody struct {
+		Err string `json:"error"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	params := parameters{}
+	err := decoder.Decode(&params)
+	if err != nil {
+		log.Printf("Error decoding parameters: %s", err)
+		w.WriteHeader(500)
+		errBody := errorBody{
+			Err: "Something went wrong",
+		}
+		eBody, err := json.Marshal(errBody)
+		if err != nil {
+			log.Printf("Error marshalling JSON: %s", err)
+			return
+		}
+		w.Write(eBody)
+	}
+
+	user, err := cfg.dbQueries.CreateUser(r.Context(), params.Email)
+	if err != nil {
+		log.Printf("Error decoding parameters: %s", err)
+		w.WriteHeader(500)
+		errBody := errorBody{
+			Err: "Something went wrong",
+		}
+		eBody, err := json.Marshal(errBody)
+		if err != nil {
+			log.Printf("Error marshalling JSON: %s", err)
+			return
+		}
+		w.Write(eBody)
+	}
+
+	response := struct {
+		Id        string `json:"id"`
+		CreatedAt string `json:"created_at"`
+		UpdatedAt string `json:"updated_at"`
+		Email     string `json:"email"`
+	}{
+		Id:        user.ID.String(),
+		CreatedAt: user.CreatedAt.String(),
+		UpdatedAt: user.UpdatedAt.String(),
+		Email:     user.Email,
+	}
+
+	w.WriteHeader(201)
+	json.NewEncoder(w).Encode(response)
+}
+
 func main() {
+	godotenv.Load()
+
+	dbURL := os.Getenv("DB_URL")
+	db, err := sql.Open("postgres", dbURL)
+	if err != nil {
+		panic("intializing postgres db connection")
+	}
+	dbQueries := database.New(db)
+
 	cfg := Config{
 		ListenAddr:     ":8080",
 		ReadTimeout:    10 * time.Second,
@@ -184,6 +260,8 @@ func main() {
 	}
 	apiCfg := apiConfig{
 		fileserverHits: atomic.Int32{},
+		dbQueries:      dbQueries,
+		platform:       os.Getenv("PLATFORM"),
 	}
 
 	logger, err := initLogger()
@@ -196,6 +274,7 @@ func main() {
 	server.router.Handle("GET /assets", http.FileServer(http.Dir("./assets")))
 	server.router.Handle("GET /api/healthz", http.HandlerFunc(handlerHealth))
 	server.router.Handle("POST /api/validate-chirp", http.HandlerFunc(handlerValidate))
+	server.router.Handle("POST /api/users", http.HandlerFunc(apiCfg.handlerCreateUser))
 	server.router.Handle("POST /admin/reset", http.HandlerFunc(apiCfg.handlerReset))
 	server.router.Handle("GET /admin/metrics", http.HandlerFunc(apiCfg.handlerHits))
 
