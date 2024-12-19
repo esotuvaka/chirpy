@@ -88,9 +88,10 @@ func handlerHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 type apiConfig struct {
-	fileserverHits atomic.Int32
-	dbQueries      *database.Queries
-	platform       string
+	fileserverHits   atomic.Int32
+	dbQueries        *database.Queries
+	platform         string
+	jwtSigningSecret string
 }
 
 func (cfg *apiConfig) handlerHits(w http.ResponseWriter, r *http.Request) {
@@ -197,8 +198,9 @@ func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, r *http.Request) 
 
 func (cfg *apiConfig) handlerLoginUser(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
-		Password string `json:"password"`
-		Email    string `json:"email"`
+		Password         string  `json:"password"`
+		Email            string  `json:"email"`
+		ExpiresInSeconds *string `json:"expires_in_seconds"`
 	}
 	type errorBody struct {
 		Err string `json:"error"`
@@ -422,9 +424,10 @@ func main() {
 		MaxHeaderBytes: 1 << 20, // 1mb
 	}
 	apiCfg := apiConfig{
-		fileserverHits: atomic.Int32{},
-		dbQueries:      dbQueries,
-		platform:       os.Getenv("PLATFORM"),
+		fileserverHits:   atomic.Int32{},
+		dbQueries:        dbQueries,
+		platform:         os.Getenv("PLATFORM"),
+		jwtSigningSecret: os.Getenv("JWT_SIGNING_KEY"),
 	}
 
 	logger, err := initLogger()
