@@ -18,3 +18,8 @@ DELETE FROM users;
 SELECT id, created_at, updated_at, email, hashed_password
 FROM users
 WHERE email = $1;
+
+-- name: FindUserById :one
+SELECT *
+FROM users
+WHERE id = $1;

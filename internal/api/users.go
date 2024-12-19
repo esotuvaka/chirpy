@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"os"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 func (cfg *Config) CreateUser(w http.ResponseWriter, r *http.Request) {
@@ -64,9 +66,8 @@ func (cfg *Config) CreateUser(w http.ResponseWriter, r *http.Request) {
 
 func (cfg *Config) LoginUser(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
-		Password         string `json:"password"`
-		Email            string `json:"email"`
-		ExpiresInSeconds *int   `json:"expires_in_seconds"`
+		Password string `json:"password"`
+		Email    string `json:"email"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -99,33 +100,55 @@ func (cfg *Config) LoginUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	maxExpirationSeconds := 3600 // 1hr
-	expires := maxExpirationSeconds
-	if params.ExpiresInSeconds != nil && *params.ExpiresInSeconds > 0 {
-		expires = min(*params.ExpiresInSeconds, maxExpirationSeconds)
-	}
+	expires := 3600 // 1hr
 	exp := time.Duration(expires) * time.Second
-
 	token, err := auth.MakeJWT(user.ID, os.Getenv("JWT_SIGNING_KEY"), exp)
 	if err != nil {
-		log.Printf("Error while creating JWT for user")
+		log.Printf("creating JWT for user: %s", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("INTERNAL SERVER ERROR"))
+		return
+	}
+
+	refreshToken, err := auth.MakeRefreshToken()
+	if err != nil {
+		log.Printf("creating refresh token: %s", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("INTERNAL SERVER ERROR"))
+		return
+	}
+
+	daysAsHours := 60 * 24
+	refreshExpires := time.Duration(daysAsHours) * time.Hour
+	err = cfg.DbQueries.CreateRefreshToken(r.Context(), database.CreateRefreshTokenParams{
+		Token: refreshToken,
+		UserID: uuid.NullUUID{
+			UUID:  user.ID,
+			Valid: true,
+		},
+		ExpiresAt: time.Now().Add(refreshExpires).UTC(),
+	})
+	if err != nil {
+		log.Printf("storing refresh token: %s", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("INTERNAL SERVER ERROR"))
 		return
 	}
 
 	response := struct {
-		Id        string `json:"id"`
-		CreatedAt string `json:"created_at"`
-		UpdatedAt string `json:"updated_at"`
-		Email     string `json:"email"`
-		Token     string `json:"token"`
+		Id           string `json:"id"`
+		CreatedAt    string `json:"created_at"`
+		UpdatedAt    string `json:"updated_at"`
+		Email        string `json:"email"`
+		Token        string `json:"token"`
+		RefreshToken string `json:"refresh_token"`
 	}{
-		Id:        user.ID.String(),
-		CreatedAt: user.CreatedAt.UTC().Format(time.RFC3339),
-		UpdatedAt: user.UpdatedAt.UTC().Format(time.RFC3339),
-		Email:     user.Email,
-		Token:     token,
+		Id:           user.ID.String(),
+		CreatedAt:    user.CreatedAt.UTC().Format(time.RFC3339),
+		UpdatedAt:    user.UpdatedAt.UTC().Format(time.RFC3339),
+		Email:        user.Email,
+		Token:        token,
+		RefreshToken: refreshToken,
 	}
 
 	w.WriteHeader(http.StatusOK)

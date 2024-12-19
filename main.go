@@ -116,6 +116,7 @@ func main() {
 	server.router.Handle("GET /api/healthz", http.HandlerFunc(handlerHealth))
 	server.router.Handle("POST /api/users", http.HandlerFunc(apiCfg.CreateUser))
 	server.router.Handle("POST /api/login", http.HandlerFunc(apiCfg.LoginUser))
+	server.router.Handle("POST /api/refresh", http.HandlerFunc(apiCfg.Refresh))
 	server.router.Handle("POST /api/chirps", http.HandlerFunc(apiCfg.CreateChirp))
 	server.router.Handle("GET /api/chirps", http.HandlerFunc(apiCfg.ListChirps))
 	server.router.Handle("GET /api/chirps/{chirpID}", http.HandlerFunc(apiCfg.GetChirp))

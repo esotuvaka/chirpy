@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"net/http"
@@ -42,10 +44,8 @@ func MakeJWT(userID uuid.UUID, tokenSecret string, expiresIn time.Duration) (str
 }
 
 func ValidateJWT(tokenString, tokenSecret string) (uuid.UUID, error) {
-	// Use MapClaims for more flexible claim handling
 	claims := jwt.MapClaims{}
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
-		// Validate signing method
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
@@ -60,13 +60,11 @@ func ValidateJWT(tokenString, tokenSecret string) (uuid.UUID, error) {
 		return uuid.Nil, fmt.Errorf("token validation failed")
 	}
 
-	// Extract sub claim
 	sub, ok := claims["sub"]
 	if !ok {
 		return uuid.Nil, fmt.Errorf("missing subject claim")
 	}
 
-	// Convert sub to string and parse UUID
 	subStr, ok := sub.(string)
 	if !ok {
 		return uuid.Nil, fmt.Errorf("subject claim is not a string")
@@ -91,4 +89,14 @@ func GetBearerToken(headers http.Header) (string, error) {
 
 	token := strings.Split(auth, " ")[1]
 	return token, nil
+}
+
+func MakeRefreshToken() (string, error) {
+	// Generate 32 random bytes
+	b := make([]byte, 32)
+	_, err := rand.Read(b)
+	if err != nil {
+		return "", fmt.Errorf("generating random bytes: %w", err)
+	}
+	return hex.EncodeToString(b), nil
 }
