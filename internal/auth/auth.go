@@ -27,10 +27,11 @@ func CheckPasswordHash(password string, hash string) error {
 }
 
 func MakeJWT(userID uuid.UUID, tokenSecret string, expiresIn time.Duration) (string, error) {
+	now := time.Now()
 	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.StandardClaims{
 		Issuer:    "chirpy",
-		IssuedAt:  int64(time.Now().UTC().Second()),
-		ExpiresAt: int64(time.Now().UTC().Second() + int(expiresIn.Seconds())),
+		IssuedAt:  now.Unix(),
+		ExpiresAt: now.Add(expiresIn).Unix(),
 		Subject:   userID.String(),
 	}).SignedString([]byte(os.Getenv("JWT_SIGNING_KEY")))
 	if err != nil {
@@ -41,21 +42,39 @@ func MakeJWT(userID uuid.UUID, tokenSecret string, expiresIn time.Duration) (str
 }
 
 func ValidateJWT(tokenString, tokenSecret string) (uuid.UUID, error) {
-	claims := &jwt.StandardClaims{}
+	// Use MapClaims for more flexible claim handling
+	claims := jwt.MapClaims{}
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+		// Validate signing method
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
 		return []byte(tokenSecret), nil
 	})
+
 	if err != nil {
-		log.Printf("Error while parsing token with claims")
-		return uuid.Nil, err
-	}
-	if !token.Valid {
-		return uuid.Nil, fmt.Errorf("invalid token")
+		return uuid.Nil, fmt.Errorf("parsing token: %w", err)
 	}
 
-	userID, err := uuid.Parse(claims.Subject)
+	if !token.Valid {
+		return uuid.Nil, fmt.Errorf("token validation failed")
+	}
+
+	// Extract sub claim
+	sub, ok := claims["sub"]
+	if !ok {
+		return uuid.Nil, fmt.Errorf("missing subject claim")
+	}
+
+	// Convert sub to string and parse UUID
+	subStr, ok := sub.(string)
+	if !ok {
+		return uuid.Nil, fmt.Errorf("subject claim is not a string")
+	}
+
+	userID, err := uuid.Parse(subStr)
 	if err != nil {
-		return uuid.Nil, err
+		return uuid.Nil, fmt.Errorf("parsing user ID: %w", err)
 	}
 
 	return userID, nil
