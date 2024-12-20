@@ -145,6 +145,12 @@ func (cfg *Config) ListChirps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// sort := "asc"
+	// sortParam := queryValues.Get("sort")
+	// if sortParam == "desc" {
+	// 	sort = sortParam
+	// }
+
 	var chirps []database.Chirp
 	if authorId != "" {
 		chirpsList, err := cfg.DbQueries.ListChirpsByAuthor(r.Context(), uuid.NullUUID{
