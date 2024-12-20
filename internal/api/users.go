@@ -3,14 +3,11 @@ package api
 import (
 	"chirpy/internal/auth"
 	"chirpy/internal/database"
-	"database/sql"
 	"encoding/json"
 	"log"
 	"net/http"
 	"os"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 func (cfg *Config) CreateUser(w http.ResponseWriter, r *http.Request) {
@@ -42,7 +39,7 @@ func (cfg *Config) CreateUser(w http.ResponseWriter, r *http.Request) {
 		HashedPassword: hashedPassword,
 	})
 	if err != nil {
-		log.Printf("Error decoding parameters: %s", err)
+		log.Printf("creating user in db: %s", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("INTERNAL SERVER ERROR"))
 		return
@@ -64,7 +61,23 @@ func (cfg *Config) CreateUser(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-func (cfg *Config) LoginUser(w http.ResponseWriter, r *http.Request) {
+func (cfg *Config) UpdateUserLogin(w http.ResponseWriter, r *http.Request) {
+	accessToken, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		log.Printf("extracting auth header")
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte("UNAUTHORIZED"))
+		return
+	}
+
+	userId, err := auth.ValidateJWT(accessToken, os.Getenv("JWT_SIGNING_KEY"))
+	if err != nil {
+		log.Printf("validating token: %v", err)
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte("UNAUTHORIZED"))
+		return
+	}
+
 	type parameters struct {
 		Password string `json:"password"`
 		Email    string `json:"email"`
@@ -72,83 +85,44 @@ func (cfg *Config) LoginUser(w http.ResponseWriter, r *http.Request) {
 
 	decoder := json.NewDecoder(r.Body)
 	params := parameters{}
-	err := decoder.Decode(&params)
+	err = decoder.Decode(&params)
 	if err != nil {
-		log.Printf("Error decoding parameters: %s", err)
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("Bad request"))
-		return
-	}
-
-	user, err := cfg.DbQueries.FindUserByEmail(r.Context(), params.Email)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			w.WriteHeader(http.StatusUnauthorized)
-			w.Write([]byte("Incorrect email or password"))
-			return
-		}
-		log.Printf("Error while searching user by email")
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-
-	err = auth.CheckPasswordHash(params.Password, user.HashedPassword)
-	if err != nil {
-		log.Printf("Error while checking password hash equivalence")
-		w.WriteHeader(http.StatusUnauthorized)
-		w.Write([]byte("Incorrect email or password"))
-		return
-	}
-
-	expires := 3600 // 1hr
-	exp := time.Duration(expires) * time.Second
-	token, err := auth.MakeJWT(user.ID, os.Getenv("JWT_SIGNING_KEY"), exp)
-	if err != nil {
-		log.Printf("creating JWT for user: %s", err)
+		log.Printf("decoding parameters: %s", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("INTERNAL SERVER ERROR"))
 		return
 	}
 
-	refreshToken, err := auth.MakeRefreshToken()
+	hashedPassword, err := auth.HashPassword(params.Password)
 	if err != nil {
-		log.Printf("creating refresh token: %s", err)
+		log.Printf("hashing password: %s", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("INTERNAL SERVER ERROR"))
 		return
 	}
 
-	daysAsHours := 60 * 24
-	refreshExpires := time.Duration(daysAsHours) * time.Hour
-	err = cfg.DbQueries.CreateRefreshToken(r.Context(), database.CreateRefreshTokenParams{
-		Token: refreshToken,
-		UserID: uuid.NullUUID{
-			UUID:  user.ID,
-			Valid: true,
-		},
-		ExpiresAt: time.Now().Add(refreshExpires).UTC(),
+	user, err := cfg.DbQueries.UpdateUserLogin(r.Context(), database.UpdateUserLoginParams{
+		ID:             userId,
+		Email:          params.Email,
+		HashedPassword: hashedPassword,
 	})
 	if err != nil {
-		log.Printf("storing refresh token: %s", err)
+		log.Printf("updating user login in db: %s", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("INTERNAL SERVER ERROR"))
 		return
 	}
 
 	response := struct {
-		Id           string `json:"id"`
-		CreatedAt    string `json:"created_at"`
-		UpdatedAt    string `json:"updated_at"`
-		Email        string `json:"email"`
-		Token        string `json:"token"`
-		RefreshToken string `json:"refresh_token"`
+		Id        string `json:"id"`
+		CreatedAt string `json:"created_at"`
+		UpdatedAt string `json:"updated_at"`
+		Email     string `json:"email"`
 	}{
-		Id:           user.ID.String(),
-		CreatedAt:    user.CreatedAt.UTC().Format(time.RFC3339),
-		UpdatedAt:    user.UpdatedAt.UTC().Format(time.RFC3339),
-		Email:        user.Email,
-		Token:        token,
-		RefreshToken: refreshToken,
+		Id:        user.ID.String(),
+		CreatedAt: user.CreatedAt.UTC().Format(time.RFC3339),
+		UpdatedAt: user.UpdatedAt.UTC().Format(time.RFC3339),
+		Email:     user.Email,
 	}
 
 	w.WriteHeader(http.StatusOK)

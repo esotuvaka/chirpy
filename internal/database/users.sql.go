@@ -94,3 +94,38 @@ func (q *Queries) FindUserById(ctx context.Context, id uuid.UUID) (User, error) 
 	)
 	return i, err
 }
+
+const updateUserLogin = `-- name: UpdateUserLogin :one
+UPDATE users
+SET
+    updated_at = CURRENT_TIMESTAMP AT TIME ZONE 'UTC',
+    email = $2,
+    hashed_password = $3
+WHERE id = $1
+RETURNING id, created_at, updated_at, email
+`
+
+type UpdateUserLoginParams struct {
+	ID             uuid.UUID
+	Email          string
+	HashedPassword string
+}
+
+type UpdateUserLoginRow struct {
+	ID        uuid.UUID
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	Email     string
+}
+
+func (q *Queries) UpdateUserLogin(ctx context.Context, arg UpdateUserLoginParams) (UpdateUserLoginRow, error) {
+	row := q.db.QueryRowContext(ctx, updateUserLogin, arg.ID, arg.Email, arg.HashedPassword)
+	var i UpdateUserLoginRow
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Email,
+	)
+	return i, err
+}

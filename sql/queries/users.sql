@@ -23,3 +23,12 @@ WHERE email = $1;
 SELECT *
 FROM users
 WHERE id = $1;
+
+-- name: UpdateUserLogin :one
+UPDATE users
+SET
+    updated_at = CURRENT_TIMESTAMP AT TIME ZONE 'UTC',
+    email = $2,
+    hashed_password = $3
+WHERE id = $1
+RETURNING id, created_at, updated_at, email;
