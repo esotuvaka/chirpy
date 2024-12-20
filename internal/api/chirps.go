@@ -135,10 +135,34 @@ func (cfg *Config) CreateChirp(w http.ResponseWriter, r *http.Request) {
 }
 
 func (cfg *Config) ListChirps(w http.ResponseWriter, r *http.Request) {
-	chirps, err := cfg.DbQueries.ListChirps(r.Context())
+	queryValues := r.URL.Query()
+	authorId := queryValues.Get("author_id")
+	authorUUID, err := uuid.Parse(authorId)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		log.Printf("invalid author id: %s", err)
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte("UNAUTHORIZED"))
 		return
+	}
+
+	var chirps []database.Chirp
+	if authorId != "" {
+		chirpsList, err := cfg.DbQueries.ListChirpsByAuthor(r.Context(), uuid.NullUUID{
+			UUID:  authorUUID,
+			Valid: true,
+		})
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		chirps = chirpsList
+	} else {
+		chirpsList, err := cfg.DbQueries.ListChirps(r.Context())
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		chirps = chirpsList
 	}
 
 	response := struct {
