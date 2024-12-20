@@ -10,4 +10,5 @@ type Config struct {
 	DbQueries        *database.Queries
 	Platform         string
 	JwtSigningSecret string
+	PolkaKey         string
 }

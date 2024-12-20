@@ -103,6 +103,7 @@ func main() {
 		DbQueries:        dbQueries,
 		Platform:         os.Getenv("PLATFORM"),
 		JwtSigningSecret: os.Getenv("JWT_SIGNING_KEY"),
+		PolkaKey:         os.Getenv("POLKA_KEY"),
 	}
 
 	logger, err := initLogger()

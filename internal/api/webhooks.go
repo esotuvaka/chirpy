@@ -1,6 +1,7 @@
 package api
 
 import (
+	"chirpy/internal/auth"
 	"database/sql"
 	"encoding/json"
 	"log"
@@ -10,6 +11,21 @@ import (
 )
 
 func (cfg *Config) UpgradeUser(w http.ResponseWriter, r *http.Request) {
+	apiKey, err := auth.GetAPIKey(r.Header)
+	if err != nil {
+		log.Printf("extracting API Key: %s", err)
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte("UNAUTHORIZED"))
+		return
+	}
+
+	if apiKey != cfg.PolkaKey {
+		log.Printf("api key doesn't match expected Polka api key")
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte("UNAUTHORIZED"))
+		return
+	}
+
 	type Data struct {
 		UserId string `json:"user_id"`
 	}
@@ -20,7 +36,7 @@ func (cfg *Config) UpgradeUser(w http.ResponseWriter, r *http.Request) {
 
 	decoder := json.NewDecoder(r.Body)
 	params := parameters{}
-	err := decoder.Decode(&params)
+	err = decoder.Decode(&params)
 	if err != nil {
 		log.Printf("decoding parameters: %s", err)
 		w.WriteHeader(http.StatusBadRequest)
