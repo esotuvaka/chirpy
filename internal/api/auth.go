@@ -2,6 +2,7 @@ package api
 
 import (
 	"chirpy/internal/auth"
+	"chirpy/internal/database"
 	"database/sql"
 	"encoding/json"
 	"log"
@@ -67,4 +68,52 @@ func (cfg *Config) Refresh(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(response)
+}
+
+func (cfg *Config) Revoke(w http.ResponseWriter, r *http.Request) {
+	// get the refresh token
+	refreshToken, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		log.Printf("decoding parameters: %s", err)
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte("UNAUTHORIZED"))
+		return
+	}
+
+	// find the refresh token in DB
+	refresh, err := cfg.DbQueries.FindRefreshToken(r.Context(), refreshToken)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			log.Printf("refresh token not found")
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte("UNAUTHORIZED"))
+			return
+		}
+		log.Printf("finding refresh token in db: %s", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("INTERNAL SERVER ERROR"))
+		return
+	}
+	if time.Now().After(refresh.ExpiresAt) {
+		log.Printf("refresh token expired")
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte("TOKEN EXPIRED"))
+		return
+	}
+
+	err = cfg.DbQueries.UpdateRefreshToken(r.Context(), database.UpdateRefreshTokenParams{
+		Token: refreshToken,
+		RevokedAt: sql.NullTime{
+			Time:  time.Now().UTC(),
+			Valid: true,
+		},
+	})
+	if err != nil {
+		log.Printf("updating refresh token in db")
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("INTERNAL SERVER ERROR"))
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
