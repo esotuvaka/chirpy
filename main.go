@@ -123,6 +123,7 @@ func main() {
 	server.router.Handle("POST /api/chirps", http.HandlerFunc(apiCfg.CreateChirp))
 	server.router.Handle("GET /api/chirps", http.HandlerFunc(apiCfg.ListChirps))
 	server.router.Handle("GET /api/chirps/{chirpID}", http.HandlerFunc(apiCfg.GetChirp))
+	server.router.Handle("DELETE /api/chirps/{chirpID}", http.HandlerFunc(apiCfg.DeleteChirp))
 	server.router.Handle("POST /admin/reset", http.HandlerFunc(apiCfg.ResetHitsAndUsers))
 	server.router.Handle("GET /admin/metrics", http.HandlerFunc(apiCfg.PageHits))
 

@@ -186,3 +186,62 @@ func (cfg *Config) GetChirp(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(response)
 }
+
+func (cfg *Config) DeleteChirp(w http.ResponseWriter, r *http.Request) {
+	// validate auth before processing any further
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		log.Printf("extracting bearer token from header: %v", err)
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte("UNAUTHORIZED"))
+		return
+	}
+
+	userId, err := auth.ValidateJWT(token, os.Getenv("JWT_SIGNING_KEY"))
+	if err != nil {
+		log.Printf("validating token: %v", err)
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte("UNAUTHORIZED"))
+		return
+	}
+
+	chirpID := r.PathValue("chirpID")
+	chirpUUID, err := uuid.Parse(chirpID)
+	if err != nil {
+		log.Printf("bad chirp id")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("BAD REQUEST"))
+		return
+	}
+
+	chirp, err := cfg.DbQueries.GetChirp(r.Context(), chirpUUID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			log.Printf("chirp not found")
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte("NOT FOUND"))
+			return
+		}
+		log.Printf("finding chirp: %s", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("INTERNAL SERVER ERROR"))
+		return
+	}
+
+	if chirp.UserID.UUID != userId {
+		log.Printf("user '%s' requested data for user '%s'", userId, chirp.UserID.UUID)
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte("FORBIDDEN"))
+		return
+	}
+
+	err = cfg.DbQueries.DeleteChirp(r.Context(), chirpUUID)
+	if err != nil {
+		log.Printf("deleting chirp in db: %s", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("INTERNAL SERVER ERROR"))
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
