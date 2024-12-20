@@ -46,15 +46,17 @@ func (cfg *Config) CreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := struct {
-		Id        string `json:"id"`
-		CreatedAt string `json:"created_at"`
-		UpdatedAt string `json:"updated_at"`
-		Email     string `json:"email"`
+		Id          string `json:"id"`
+		CreatedAt   string `json:"created_at"`
+		UpdatedAt   string `json:"updated_at"`
+		Email       string `json:"email"`
+		IsChirpyRed bool   `json:"is_chirpy_red"`
 	}{
-		Id:        user.ID.String(),
-		CreatedAt: user.CreatedAt.UTC().Format(time.RFC3339),
-		UpdatedAt: user.UpdatedAt.UTC().Format(time.RFC3339),
-		Email:     user.Email,
+		Id:          user.ID.String(),
+		CreatedAt:   user.CreatedAt.UTC().Format(time.RFC3339),
+		UpdatedAt:   user.UpdatedAt.UTC().Format(time.RFC3339),
+		Email:       user.Email,
+		IsChirpyRed: user.IsChirpyRed,
 	}
 
 	w.WriteHeader(http.StatusCreated)
@@ -114,15 +116,17 @@ func (cfg *Config) UpdateUserLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := struct {
-		Id        string `json:"id"`
-		CreatedAt string `json:"created_at"`
-		UpdatedAt string `json:"updated_at"`
-		Email     string `json:"email"`
+		Id          string `json:"id"`
+		CreatedAt   string `json:"created_at"`
+		UpdatedAt   string `json:"updated_at"`
+		Email       string `json:"email"`
+		IsChirpyRed bool   `json:"is_chirpy_red"`
 	}{
-		Id:        user.ID.String(),
-		CreatedAt: user.CreatedAt.UTC().Format(time.RFC3339),
-		UpdatedAt: user.UpdatedAt.UTC().Format(time.RFC3339),
-		Email:     user.Email,
+		Id:          user.ID.String(),
+		CreatedAt:   user.CreatedAt.UTC().Format(time.RFC3339),
+		UpdatedAt:   user.UpdatedAt.UTC().Format(time.RFC3339),
+		Email:       user.Email,
+		IsChirpyRed: user.IsChirpyRed,
 	}
 
 	w.WriteHeader(http.StatusOK)

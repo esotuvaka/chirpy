@@ -89,6 +89,7 @@ func (cfg *Config) Login(w http.ResponseWriter, r *http.Request) {
 		CreatedAt    string `json:"created_at"`
 		UpdatedAt    string `json:"updated_at"`
 		Email        string `json:"email"`
+		IsChirpyRed  bool   `json:"is_chirpy_red"`
 		Token        string `json:"token"`
 		RefreshToken string `json:"refresh_token"`
 	}{
@@ -96,6 +97,7 @@ func (cfg *Config) Login(w http.ResponseWriter, r *http.Request) {
 		CreatedAt:    user.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:    user.UpdatedAt.UTC().Format(time.RFC3339),
 		Email:        user.Email,
+		IsChirpyRed:  user.IsChirpyRed,
 		Token:        token,
 		RefreshToken: refreshToken,
 	}
